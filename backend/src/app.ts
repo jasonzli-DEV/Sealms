@@ -39,6 +39,10 @@ export function createApp(customDeps?: AppDeps): Hono<AppEnv> {
     await next();
   });
 
+  app.notFound((c) => {
+    return c.json({ errorCode: 404, errorMsg: "Not Found" }, 404);
+  });
+
   app.onError((err, c) => {
     if (err instanceof SsrfError) {
       return c.json({ error: err.message }, 400);

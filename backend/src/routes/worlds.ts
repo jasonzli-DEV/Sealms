@@ -23,8 +23,8 @@ export const worldsRoutes = new Hono<AppEnv>();
 worldsRoutes.use("/worlds", requireAuth);
 worldsRoutes.use("/worlds/*", requireAuth);
 
-// GET /worlds — owned + accepted Sealms
-worldsRoutes.get("/worlds", async (c) => {
+// GET /worlds and /worlds/listUserWorldsOfType/any — owned + accepted Sealms
+async function listUserWorlds(c: Context<AppEnv>) {
   const user = c.get("user")!;
   const { getCollections } = c.get("deps");
   const { sealms } = await getCollections();
@@ -42,11 +42,63 @@ worldsRoutes.get("/worlds", async (c) => {
   return c.json({
     servers: docs.map((d) => mapSealmToRealmsServer(d, user.uuid)),
   });
-});
+}
+
+worldsRoutes.get("/worlds", listUserWorlds);
+worldsRoutes.get("/worlds/listUserWorldsOfType/:type", listUserWorlds);
+worldsRoutes.get("/worlds/listPrereleaseEligibleWorlds", (c) => c.json({ servers: [] }));
 
 // GET /worlds/liveplayerlist — client mod runs local SLP pings
 worldsRoutes.get("/worlds/liveplayerlist", (c) => {
   return c.json({ lists: [] });
+});
+
+// GET /worlds/:id/configuration/tier — MC 26.3 tier config stub
+worldsRoutes.get("/worlds/:id/configuration/tier", (c) => {
+  return c.json({
+    renderDistance: 12,
+    simulationDistance: 10,
+    maxRenderDistance: 32,
+    maxSimulationDistance: 32,
+  });
+});
+
+// POST /worlds/:id/configuration — MC 26.3 configure screen save
+worldsRoutes.post("/worlds/:id/configuration", async (c) => {
+  const user = c.get("user")!;
+  const sealm = await findSealmByNumericId(c, c.req.param("id"));
+  if (!sealm) return c.json({ errorCode: 404, errorMsg: "Sealm not found" }, 404);
+  if (getUserRole(sealm, user.uuid) !== "owner") {
+    return c.json({ errorCode: 403, errorMsg: "Owner permission required" }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    name?: string;
+    description?: string;
+  };
+  const update: Record<string, string> = {};
+  if (typeof body.name === "string" && body.name.trim()) update.name = body.name.trim().slice(0, 64);
+  if (typeof body.description === "string") update.description = body.description.slice(0, 200);
+  if (Object.keys(update).length > 0) {
+    const { getCollections } = c.get("deps");
+    const { sealms } = await getCollections();
+    await sealms.updateOne({ numericId: sealm.numericId }, { $set: update });
+  }
+  return c.body(null, 204);
+});
+
+// DELETE /worlds/:id — Owner unlinks Sealm
+worldsRoutes.delete("/worlds/:id", async (c) => {
+  const user = c.get("user")!;
+  const sealm = await findSealmByNumericId(c, c.req.param("id"));
+  if (!sealm) return c.json({ errorCode: 404, errorMsg: "Sealm not found" }, 404);
+  if (getUserRole(sealm, user.uuid) !== "owner") {
+    return c.json({ errorCode: 403, errorMsg: "Owner permission required" }, 403);
+  }
+  const { getCollections } = c.get("deps");
+  const { sealms, invites } = await getCollections();
+  await sealms.deleteOne({ numericId: sealm.numericId });
+  await invites.deleteMany({ sealmNumericId: sealm.numericId });
+  return c.body(null, 204);
 });
 
 // GET /worlds/v1/:id/join/pc — Seamless 503 Auto-Start & SLP Readiness Check

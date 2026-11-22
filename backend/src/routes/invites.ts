@@ -179,6 +179,36 @@ invitesRoutes.delete("/invites/:id/invite/:uuid", rateLimitByUser("ptero-write",
   return c.body(null, 204);
 });
 
+// DELETE /invites/:id — Player leaves a Sealm (uninvite myself)
+invitesRoutes.delete("/invites/:id", async (c) => {
+  const user = c.get("user")!;
+  const sealm = await findSealmByNumericId(c, c.req.param("id"));
+  if (!sealm) return c.body(null, 204);
+
+  const { getCollections, ptero } = c.get("deps");
+  const { sealms } = await getCollections();
+  await sealms.updateOne(
+    { numericId: sealm.numericId },
+    { $pull: { members: { uuid: user.uuid } } }
+  );
+
+  if (isValidMinecraftUsername(user.username)) {
+    try {
+      await withPteroKey(c, sealm, (apiKey) =>
+        ptero.sendCommand(
+          sealm.ptero.panelUrl,
+          apiKey,
+          sealm.ptero.serverId,
+          `whitelist remove ${user.username}`
+        )
+      );
+    } catch {
+      // Server may be offline
+    }
+  }
+  return c.body(null, 204);
+});
+
 // PUT /invites/accept/:id — Player accepts pending invite
 invitesRoutes.put("/invites/accept/:id", async (c) => {
   const user = c.get("user")!;

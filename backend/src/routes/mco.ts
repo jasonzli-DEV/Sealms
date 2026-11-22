@@ -18,7 +18,11 @@ mcoRoutes.get("/feature/v1", (c) => c.json([]));
 
 mcoRoutes.get("/trial", (c) => c.text("false", 200));
 
+mcoRoutes.get("/activities/liveplayerlist", requireAuth, (c) => c.json({ lists: [] }));
+
 mcoRoutes.get("/regions/preferred", requireAuth, (c) => c.json({ regionDataList: [] }));
+
+mcoRoutes.get("/regions/preferredRegions", requireAuth, (c) => c.json({ regionDataList: [] }));
 
 mcoRoutes.post("/mco/tos/agreed", requireAuth, (c) => c.body(null, 204));
 
