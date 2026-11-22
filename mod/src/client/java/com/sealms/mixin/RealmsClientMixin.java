@@ -41,7 +41,9 @@ public class RealmsClientMixin {
 			if (conn != null) {
 				String url = conn.getURL().toString();
 				// Public endpoints do not require auth
-				if (!url.contains("/mco/available") && !url.contains("/mco/client/compatible")) {
+				if (!url.contains("/mco/available")
+						&& !url.contains("/mco/client/compatible")
+						&& !url.contains("/feature/v1")) {
 					String token = SealmsAuthManager.getOrFetchToken();
 					conn.setRequestProperty("Authorization", "Bearer " + token);
 				}

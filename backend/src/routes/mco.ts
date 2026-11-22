@@ -14,6 +14,12 @@ mcoRoutes.get("/mco/stageAvailable", (c) => c.text("false", 200));
 
 mcoRoutes.get("/mco/v1/news", (c) => c.json({ newsLink: null }));
 
+mcoRoutes.get("/feature/v1", (c) => c.json([]));
+
+mcoRoutes.get("/trial", (c) => c.text("false", 200));
+
+mcoRoutes.get("/regions/preferred", requireAuth, (c) => c.json({ regionDataList: [] }));
+
 mcoRoutes.post("/mco/tos/agreed", requireAuth, (c) => c.body(null, 204));
 
 mcoRoutes.get("/notifications", requireAuth, (c) => c.json({ notifications: [] }));

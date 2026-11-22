@@ -12,6 +12,14 @@ repositories {
 loom {
 	splitEnvironmentSourceSets()
 
+	runs {
+		client {
+			if (providers.systemProperty("sealms.auditMixins").getOrElse("false") == "true") {
+				vmArg("-Dsealms.auditMixins=true")
+			}
+		}
+	}
+
 	mods {
 		"sealms" {
 			sourceSet sourceSets.main
