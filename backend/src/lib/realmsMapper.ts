@@ -95,7 +95,8 @@ export function mapSealmToRealmsServer(
     name: doc.name,
     motd: doc.ptero.credentialsInvalid
       ? (isOwner ? "API Key Invalid — Click Configure to Update Credentials" : "Server Temporarily Unavailable")
-      : doc.description,
+      : (liveProperties?.["motd"]?.replace(/\\u00a7[0-9a-fk-or]/gi, "").replace(/§[0-9a-fk-or]/gi, "").trim() ||
+          (doc.description && doc.description.trim() !== "..." ? doc.description : "A Minecraft Server")),
     state: doc.state,
     daysLeft: 999,
     expired: false,

@@ -7,24 +7,30 @@ import com.sealms.api.SealmsApiClient;
 import com.sealms.ping.LocalSlpPinger;
 import com.sealms.ui.AddSealmScreen;
 import com.sealms.ui.JoinWithCodeScreen;
+import net.minecraft.SharedConstants;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.realms.RealmsScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Hooks "Add a Sealm" (replacing Buy a Realm / PDP), hooks "Join with Code",
- * and triggers async local SLP pings for servers in the Sealms list.
+ * and triggers async local SLP pings for live MOTDs, player counts, and
+ * vanilla-parity server/client version compatibility checks.
  */
 @Mixin(RealmsMainScreen.class)
 public abstract class RealmsMainScreenMixin extends RealmsScreen {
 
 	@Shadow
 	private RealmsServerList serverList;
+
+	@Shadow
+	protected abstract void updateButtonStates();
 
 	protected RealmsMainScreenMixin(Component title) {
 		super(title);
@@ -54,11 +60,41 @@ public abstract class RealmsMainScreenMixin extends RealmsScreen {
 		for (RealmsServer server : this.serverList) {
 			String addr = SealmsApiClient.getServerAddress(server.id);
 			if (addr != null) {
-				LocalSlpPinger.pingAsync(server.id, addr);
-				LocalSlpPinger.PingStatus status = LocalSlpPinger.getCached(server.id);
-				if (status != null && status.online() && status.motd() != null && !status.motd().isBlank()) {
-					server.motd = status.motd() + " (" + status.playersOnline() + "/" + status.playersMax() + ")";
-				}
+				sealms$applySlpStatus(server, LocalSlpPinger.getCached(server.id));
+				LocalSlpPinger.pingAsync(server.id, addr, () -> this.minecraft.execute(() -> {
+					sealms$applySlpStatus(server, LocalSlpPinger.getCached(server.id));
+					this.updateButtonStates();
+				}));
+			}
+		}
+	}
+
+	@Unique
+	private static void sealms$applySlpStatus(RealmsServer server, LocalSlpPinger.PingStatus status) {
+		if (status == null || !status.online()) {
+			return;
+		}
+		if (status.motd() != null && !status.motd().isBlank()) {
+			server.motd = status.motd() + " (" + status.playersOnline() + "/" + status.playersMax() + ")";
+		} else {
+			String base = (server.motd != null && !server.motd.equals("...")) ? server.motd : "Online";
+			if (!base.contains("(")) {
+				server.motd = base + " (" + status.playersOnline() + "/" + status.playersMax() + ")";
+			}
+		}
+
+		// Vanilla Realms version compatibility handling
+		int clientProtocol = SharedConstants.getCurrentVersion().protocolVersion();
+		if (status.protocolVersion() > 0) {
+			if (status.versionName() != null && !status.versionName().isBlank()) {
+				server.activeVersion = status.versionName();
+			}
+			if (status.protocolVersion() == clientProtocol) {
+				server.compatibility = RealmsServer.Compatibility.COMPATIBLE;
+			} else if (status.protocolVersion() > clientProtocol) {
+				server.compatibility = RealmsServer.Compatibility.NEEDS_UPGRADE;
+			} else {
+				server.compatibility = RealmsServer.Compatibility.NEEDS_DOWNGRADE;
 			}
 		}
 	}

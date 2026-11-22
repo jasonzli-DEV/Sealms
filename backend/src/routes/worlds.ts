@@ -53,14 +53,67 @@ worldsRoutes.get("/worlds/liveplayerlist", (c) => {
   return c.json({ lists: [] });
 });
 
-// GET /worlds/:id/configuration/tier — MC 26.3 tier config stub
-worldsRoutes.get("/worlds/:id/configuration/tier", (c) => {
+// GET /worlds/:id/configuration/tier — MC 26.3 RealmTierConfigurationDto
+worldsRoutes.get("/worlds/:id/configuration/tier", async (c) => {
+  const user = c.get("user")!;
+  const sealm = await findSealmByNumericId(c, c.req.param("id"));
+  let viewDist = 10;
+  let simDist = 10;
+  if (sealm && (getUserRole(sealm, user.uuid) === "owner" || getUserRole(sealm, user.uuid) === "operator")) {
+    const { ptero } = c.get("deps");
+    try {
+      const raw = await withPteroKey(c, sealm, (apiKey) =>
+        ptero.readFile(sealm.ptero.panelUrl, apiKey, sealm.ptero.serverId, "/server.properties")
+      );
+      const props = parseServerProperties(raw).values;
+      const parsedView = Number.parseInt(props["view-distance"] ?? "", 10);
+      const parsedSim = Number.parseInt(props["simulation-distance"] ?? "", 10);
+      if (Number.isFinite(parsedView) && parsedView >= 2 && parsedView <= 32) viewDist = parsedView;
+      if (Number.isFinite(parsedSim) && parsedSim >= 2 && parsedSim <= 32) simDist = parsedSim;
+    } catch {
+      // Fallback to defaults
+    }
+  }
   return c.json({
-    renderDistance: 12,
-    simulationDistance: 10,
-    maxRenderDistance: 32,
-    maxSimulationDistance: 32,
+    renderDistance: { min: 2, max: 32, defaultValue: 10, current: viewDist },
+    simDistance: { min: 2, max: 32, defaultValue: 10, current: simDist },
   });
+});
+
+// POST /worlds/:id/configuration/renderDistance/:distance
+worldsRoutes.post("/worlds/:id/configuration/renderDistance/:distance", async (c) => {
+  const user = c.get("user")!;
+  const sealm = await findSealmByNumericId(c, c.req.param("id"));
+  if (!sealm) return c.json({ errorCode: 404, errorMsg: "Sealm not found" }, 404);
+  if (getUserRole(sealm, user.uuid) !== "owner") {
+    return c.json({ errorCode: 403, errorMsg: "Owner permission required" }, 403);
+  }
+  const dist = Math.max(2, Math.min(32, Number.parseInt(c.req.param("distance"), 10) || 10));
+  const { ptero } = c.get("deps");
+  await withPteroKey(c, sealm, async (apiKey) => {
+    const raw = await ptero.readFile(sealm.ptero.panelUrl, apiKey, sealm.ptero.serverId, "/server.properties");
+    const updated = updateServerProperties(raw, { "view-distance": String(dist) });
+    await ptero.writeFile(sealm.ptero.panelUrl, apiKey, sealm.ptero.serverId, "/server.properties", updated.content);
+  });
+  return c.body(null, 204);
+});
+
+// POST /worlds/:id/configuration/simDistance/:distance
+worldsRoutes.post("/worlds/:id/configuration/simDistance/:distance", async (c) => {
+  const user = c.get("user")!;
+  const sealm = await findSealmByNumericId(c, c.req.param("id"));
+  if (!sealm) return c.json({ errorCode: 404, errorMsg: "Sealm not found" }, 404);
+  if (getUserRole(sealm, user.uuid) !== "owner") {
+    return c.json({ errorCode: 403, errorMsg: "Owner permission required" }, 403);
+  }
+  const dist = Math.max(2, Math.min(32, Number.parseInt(c.req.param("distance"), 10) || 10));
+  const { ptero } = c.get("deps");
+  await withPteroKey(c, sealm, async (apiKey) => {
+    const raw = await ptero.readFile(sealm.ptero.panelUrl, apiKey, sealm.ptero.serverId, "/server.properties");
+    const updated = updateServerProperties(raw, { "simulation-distance": String(dist) });
+    await ptero.writeFile(sealm.ptero.panelUrl, apiKey, sealm.ptero.serverId, "/server.properties", updated.content);
+  });
+  return c.body(null, 204);
 });
 
 // POST /worlds/:id/configuration — MC 26.3 configure screen save
@@ -179,6 +232,22 @@ worldsRoutes.get(
       if (!slp.online) {
         c.header("Retry-After", "3");
         return c.json({ errorCode: 503, errorMsg: "World is still loading..." }, 503);
+      }
+
+      // Ensure owner / accepted member is whitelisted (covers owners on link & invites accepted while offline)
+      if (/^[a-zA-Z0-9_]{3,16}$/.test(user.username)) {
+        try {
+          await withPteroKey(c, sealm, (apiKey) =>
+            ptero.sendCommand(
+              sealm.ptero.panelUrl,
+              apiKey,
+              sealm.ptero.serverId,
+              `whitelist add ${user.username}`
+            )
+          );
+        } catch {
+          // Non-fatal
+        }
       }
 
       return c.json({

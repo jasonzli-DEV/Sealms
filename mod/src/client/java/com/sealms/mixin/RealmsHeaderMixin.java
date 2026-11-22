@@ -30,13 +30,20 @@ public class RealmsHeaderMixin {
 			if (btn instanceof AbstractWidget widget) {
 				widget.visible = false;
 				widget.active = false;
+				widget.setWidth(0);
+				widget.setHeight(0);
 			}
 		} catch (Throwable ignored) {
 		}
 	}
 
-	@Inject(method = "createLayout", at = @At("HEAD"))
-	private void sealms$hideNewsButton(ImageWidget logo, int headerHeight, int width, CallbackInfoReturnable<Layout> cir) {
+	@Inject(method = "<init>", at = @At("TAIL"))
+	private void sealms$hideNewsOnConstruct(CallbackInfo ci) {
+		sealms$disableNewsWidget();
+	}
+
+	@Inject(method = "createLayout", at = @At("RETURN"))
+	private void sealms$hideNewsAfterLayout(ImageWidget logo, int headerHeight, int width, CallbackInfoReturnable<Layout> cir) {
 		sealms$disableNewsWidget();
 	}
 

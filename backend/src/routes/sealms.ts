@@ -116,13 +116,17 @@ sealmsRoutes.post("/sealms", rateLimitByUser("link-sealm", 10, 60), async (c) =>
     return c.json({ error: "Could not connect to Pterodactyl server" }, 400);
   }
 
-  // 5. Read server.properties to bind Slot 1 level-name
+  // 5. Read server.properties to bind Slot 1 level-name and server MOTD
   let levelName = "world";
+  let serverMotd = "";
   try {
     const rawProps = await ptero.readFile(normalizedUrl, apiKey, serverId, "/server.properties");
     const props = parseServerProperties(rawProps);
     if (props.values["level-name"]) {
       levelName = props.values["level-name"];
+    }
+    if (props.values["motd"]) {
+      serverMotd = props.values["motd"].replace(/\\u00a7[0-9a-fk-or]/gi, "").replace(/§[0-9a-fk-or]/gi, "").trim();
     }
   } catch {
     // Default to "world" if server.properties doesn't exist yet
@@ -175,7 +179,11 @@ sealmsRoutes.post("/sealms", rateLimitByUser("link-sealm", 10, 60), async (c) =>
     ownerUuid: user.uuid,
     ownerName: user.username,
     name: parsed.data.name || details.name || `Sealm #${numericId}`,
-    description: parsed.data.description ?? details.description ?? "A Sealms Server",
+    description:
+      parsed.data.description ||
+      serverMotd ||
+      (details.description && details.description.trim() !== "..." ? details.description.trim() : "") ||
+      "A Minecraft Server",
     state: "OPEN",
     allowMemberWake: true,
     activeSlot: 1,
@@ -197,6 +205,15 @@ sealmsRoutes.post("/sealms", rateLimitByUser("link-sealm", 10, 60), async (c) =>
   };
 
   await sealms.insertOne(doc);
+
+  // Ensure owner is whitelisted on their own server
+  if (isValidMinecraftUsername(user.username)) {
+    try {
+      await ptero.sendCommand(normalizedUrl, apiKey, serverId, `whitelist add ${user.username}`);
+    } catch {
+      // Server may be offline; /join/pc also ensures whitelist on join
+    }
+  }
 
   return c.json(
     {

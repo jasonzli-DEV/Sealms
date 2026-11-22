@@ -19,8 +19,8 @@ import java.util.concurrent.Executors;
 
 /**
  * Runs lightweight local Minecraft Server List Ping (SLP) checks asynchronously
- * from the client mod so the main Sealms list shows live player counts and MOTDs
- * without burdening the Vercel backend.
+ * from the client mod so the main Sealms list shows live player counts, MOTDs,
+ * and server/client version compatibility without burdening the Vercel backend.
  */
 public final class LocalSlpPinger {
 	private static final Gson GSON = new Gson();
@@ -30,7 +30,15 @@ public final class LocalSlpPinger {
 		return t;
 	});
 
-	public record PingStatus(boolean online, int playersOnline, int playersMax, String motd, long timestampMs) {}
+	public record PingStatus(
+			boolean online,
+			int playersOnline,
+			int playersMax,
+			String motd,
+			String versionName,
+			int protocolVersion,
+			long timestampMs
+	) {}
 
 	private static final Map<Long, PingStatus> CACHE = new ConcurrentHashMap<>();
 	private static final long CACHE_TTL_MS = 15_000;
@@ -41,7 +49,7 @@ public final class LocalSlpPinger {
 		return CACHE.get(realmId);
 	}
 
-	public static void pingAsync(long realmId, String address) {
+	public static void pingAsync(long realmId, String address, Runnable onComplete) {
 		if (address == null || address.isBlank()) return;
 		PingStatus existing = CACHE.get(realmId);
 		if (existing != null && (System.currentTimeMillis() - existing.timestampMs()) < CACHE_TTL_MS) {
@@ -50,6 +58,9 @@ public final class LocalSlpPinger {
 		CompletableFuture.runAsync(() -> {
 			PingStatus status = pingNow(address, 2500);
 			CACHE.put(realmId, status);
+			if (onComplete != null) {
+				onComplete.run();
+			}
 		}, EXECUTOR);
 	}
 
@@ -89,7 +100,7 @@ public final class LocalSlpPinger {
 			readVarInt(in); // packet length
 			int packetId = readVarInt(in);
 			if (packetId != 0x00) {
-				return new PingStatus(false, 0, 0, "", System.currentTimeMillis());
+				return new PingStatus(false, 0, 0, "", "", -1, System.currentTimeMillis());
 			}
 			int jsonLen = readVarInt(in);
 			byte[] jsonBytes = in.readNBytes(jsonLen);
@@ -97,25 +108,55 @@ public final class LocalSlpPinger {
 
 			int online = 0;
 			int max = 20;
-			if (obj != null && obj.has("players")) {
+			if (obj != null && obj.has("players") && obj.get("players").isJsonObject()) {
 				JsonObject players = obj.getAsJsonObject("players");
 				if (players.has("online")) online = players.get("online").getAsInt();
 				if (players.has("max")) max = players.get("max").getAsInt();
 			}
-			String motd = "";
-			if (obj != null && obj.has("description")) {
-				JsonElement desc = obj.get("description");
-				if (desc.isJsonPrimitive()) {
-					motd = desc.getAsString();
-				} else if (desc.isJsonObject() && desc.getAsJsonObject().has("text")) {
-					motd = desc.getAsJsonObject().get("text").getAsString();
+
+			String versionName = "";
+			int protocolVersion = -1;
+			if (obj != null && obj.has("version") && obj.get("version").isJsonObject()) {
+				JsonObject ver = obj.getAsJsonObject("version");
+				if (ver.has("name") && !ver.get("name").isJsonNull()) {
+					versionName = ver.get("name").getAsString().trim();
+				}
+				if (ver.has("protocol") && !ver.get("protocol").isJsonNull()) {
+					protocolVersion = ver.get("protocol").getAsInt();
 				}
 			}
 
-			return new PingStatus(true, online, max, motd, System.currentTimeMillis());
+			String motd = "";
+			if (obj != null && obj.has("description")) {
+				motd = extractPlainText(obj.get("description")).replaceAll("§[0-9a-fk-orA-FK-OR]", "").replace("\n", " ").trim();
+			}
+
+			return new PingStatus(true, online, max, motd, versionName, protocolVersion, System.currentTimeMillis());
 		} catch (Exception e) {
-			return new PingStatus(false, 0, 0, "", System.currentTimeMillis());
+			return new PingStatus(false, 0, 0, "", "", -1, System.currentTimeMillis());
 		}
+	}
+
+	private static String extractPlainText(JsonElement el) {
+		if (el == null || el.isJsonNull()) return "";
+		if (el.isJsonPrimitive()) return el.getAsString();
+		StringBuilder sb = new StringBuilder();
+		if (el.isJsonObject()) {
+			JsonObject obj = el.getAsJsonObject();
+			if (obj.has("text") && obj.get("text").isJsonPrimitive()) {
+				sb.append(obj.get("text").getAsString());
+			}
+			if (obj.has("extra") && obj.get("extra").isJsonArray()) {
+				for (JsonElement child : obj.getAsJsonArray("extra")) {
+					sb.append(extractPlainText(child));
+				}
+			}
+		} else if (el.isJsonArray()) {
+			for (JsonElement child : el.getAsJsonArray()) {
+				sb.append(extractPlainText(child));
+			}
+		}
+		return sb.toString();
 	}
 
 	private static void sendPacket(DataOutputStream out, byte[] payload) throws IOException {
