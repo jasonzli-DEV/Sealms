@@ -13,7 +13,6 @@ import com.sealms.auth.SealmsAuthManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.net.HttpURLConnection;
@@ -33,20 +32,6 @@ public class RealmsClientMixin {
 	@Inject(method = "frontendV2Url(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", at = @At("HEAD"), cancellable = true)
 	private static void sealms$redirectFrontendV2Url(String path, String query, CallbackInfoReturnable<String> cir) {
 		cir.setReturnValue(SealmsConfig.buildUrl(path, query));
-	}
-
-	/**
-	 * Never send Mojang's sessionId cookie to the Sealms backend.
-	 */
-	@Redirect(
-			method = "execute(Lcom/mojang/realmsclient/client/Request;)Ljava/lang/String;",
-			at = @At(value = "INVOKE", target = "Lcom/mojang/realmsclient/client/Request;cookie(Ljava/lang/String;Ljava/lang/String;)V")
-	)
-	private void sealms$stripSessionCookie(Request<?> request, String key, String value) {
-		if ("sid".equals(key)) {
-			return;
-		}
-		request.cookie(key, value);
 	}
 
 	@Inject(method = "execute(Lcom/mojang/realmsclient/client/Request;)Ljava/lang/String;", at = @At("HEAD"))

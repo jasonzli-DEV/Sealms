@@ -5,6 +5,7 @@
   "client": [
     "RealmsClientMixin",
     "RequestAccessor",
+    "RequestMixin",
     "GetServerDetailsTaskMixin",
     "RealmsHeaderMixin",
     "RealmsMainScreenMixin",
