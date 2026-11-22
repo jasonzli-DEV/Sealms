@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "com.sealms.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "RealmsClientMixin",
+    "RequestAccessor",
+    "GetServerDetailsTaskMixin",
+    "RealmsHeaderMixin",
+    "RealmsMainScreenMixin",
+    "RealmsConfigureWorldScreenMixin",
+    "RealmsPlayersTabMixin",
+    "RealmsSelectWorldTemplateScreenMixin",
+    "FileUploadMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

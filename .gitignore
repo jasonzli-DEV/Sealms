@@ -1,0 +1,22 @@
+# Node / Backend
+node_modules/
+backend/dist/
+backend/.vercel/
+.env
+.env.local
+.env.*.local
+
+# Java / Gradle / Fabric
+mod/.gradle/
+mod/build/
+mod/run/
+mod/out/
+*.class
+*.jar
+!mod/gradle/wrapper/gradle-wrapper.jar
+
+# OS / IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/

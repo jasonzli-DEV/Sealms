@@ -1,0 +1,34 @@
+{
+	"schemaVersion": 1,
+	"id": "sealms",
+	"version": "${version}",
+	"name": "Sealms",
+	"description": "Replaces the vanilla Minecraft Realms backend with any Pterodactyl-compatible game server while preserving the exact Realms UI and workflow.",
+	"authors": [
+		"Sealms Contributors"
+	],
+	"contact": {
+		"homepage": "https://mcsealms.vercel.app",
+		"sources": "https://github.com/sealms/sealms"
+	},
+	"license": "MIT",
+	"icon": "assets/sealms/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.sealms.SealmsMod"
+		]
+	},
+	"mixins": [
+		{
+			"config": "sealms.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

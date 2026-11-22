@@ -1,0 +1,85 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.version
+group = project.group
+
+repositories {
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"sealms" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+def generatedConfigDir = layout.buildDirectory.dir("generated/sources/sealmsConfig/java")
+
+def generateSealmsBuildConfig = tasks.register("generateSealmsBuildConfig") {
+	def cfKey = providers.environmentVariable("CURSEFORGE_API_KEY").orElse(providers.gradleProperty("curseforgeApiKey").orElse(""))
+	def backendUrl = providers.environmentVariable("SEALMS_BACKEND_URL").orElse(providers.gradleProperty("sealmsBackendUrl").orElse("https://mcsealms.vercel.app"))
+	def outDir = generatedConfigDir
+	inputs.property("cfKey", cfKey)
+	inputs.property("backendUrl", backendUrl)
+	outputs.dir(outDir)
+	doLast {
+		def pkgDir = outDir.get().asFile.toPath().resolve("com/sealms").toFile()
+		pkgDir.mkdirs()
+		def escape = { String s -> s.replace("\\", "\\\\").replace("\"", "\\\"") }
+		new File(pkgDir, "SealmsBuildConfig.java").text = """package com.sealms;
+
+public final class SealmsBuildConfig {
+	public static final String DEFAULT_BACKEND_URL = "${escape(backendUrl.get())}";
+	public static final String CURSEFORGE_API_KEY = "${escape(cfKey.get())}";
+	private SealmsBuildConfig() {}
+}
+"""
+	}
+}
+
+sourceSets {
+	client {
+		java.srcDir(generateSealmsBuildConfig)
+	}
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("../LICENSE") {
+		rename { "${it}_$projectName" }
+	}
+}

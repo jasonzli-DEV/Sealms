@@ -1,0 +1,44 @@
+name: Build Fabric 26.3 Mod
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mod/**"
+      - ".github/workflows/build-mod.yml"
+  pull_request:
+    paths:
+      - "mod/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mod
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Sealms 26.3 Fabric JAR
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          SEALMS_BACKEND_URL: ${{ vars.SEALMS_BACKEND_URL || 'https://mcsealms.vercel.app' }}
+        run: ./gradlew build --no-daemon
+
+      - name: Upload built JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sealms-fabric-26.3
+          path: mod/build/libs/*.jar
